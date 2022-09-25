@@ -1,22 +1,21 @@
-﻿global using UnhollowerBaseLib;
-global using UnhollowerBaseLib.Attributes;
-global using UnhollowerRuntimeLib;
-
-using BepInEx;
+﻿using BepInEx;
 using BepInEx.Configuration;
 using BepInEx.IL2CPP;
 using HarmonyLib;
+using Hazel;
 using System.Collections.Generic;
+using System.Security.Cryptography;
 using System.Linq;
+using System.Net;
+using System.IO;
 using System;
+using System.Reflection;
+using UnhollowerBaseLib;
 using UnityEngine;
-using TMPro;
-using UltimateMods.Roles;
 
 namespace UltimateMods
 {
     [BepInPlugin(Id, "UltimateMods", VersionString)]
-    [BepInDependency(SubmergedCompatibility.SUBMERGED_GUID, BepInDependency.DependencyFlags.SoftDependency)]
     [BepInProcess("Among Us.exe")]
     public class UltimateModsPlugin : BasePlugin
     {
@@ -26,20 +25,7 @@ namespace UltimateMods
 
         public static System.Version Version = System.Version.Parse(VersionString);
         internal static BepInEx.Logging.ManualLogSource Logger;
-        public static int OptionsPage = 1;
-        public static bool isBeta = true;
-
-        public static ConfigEntry<bool> DebugMode { get; private set; }
-        public static ConfigEntry<bool> GhostsSeeTasks { get; set; }
-        public static ConfigEntry<bool> GhostsSeeRoles { get; set; }
-        public static ConfigEntry<bool> GhostsSeeVotes { get; set; }
-        public static ConfigEntry<bool> ShowRoleSummary { get; set; }
-        public static ConfigEntry<bool> HideNameplates { get; set; }
-        // public static ConfigEntry<bool> ShowLighterDarker { get; set; }
-        public static ConfigEntry<bool> HideTaskArrows { get; set; }
-        public static ConfigEntry<bool> EnableHorseMode { get; set; }
-        public static ConfigEntry<string> ShowPopUpVersion { get; set; }
-
+        public static int optionsPage = 1;
         public Harmony Harmony { get; } = new Harmony(Id);
         public static UltimateModsPlugin Instance;
 
@@ -47,25 +33,8 @@ namespace UltimateMods
         {
             Logger = Log;
             Instance = this;
+            // ModTranslation.Load();
 
-            ModTranslation.Load();
-
-            DebugMode = Config.Bind("Custom", "Enable Debug Mode", false);
-            GhostsSeeTasks = Config.Bind("Custom", "Ghosts See Remaining Tasks", true);
-            GhostsSeeRoles = Config.Bind("Custom", "Ghosts See Roles", true);
-            GhostsSeeVotes = Config.Bind("Custom", "Ghosts See Votes", true);
-            ShowRoleSummary = Config.Bind("Custom", "Show Role Summary", true);
-            HideNameplates = Config.Bind("Custom", "Hide Nameplates", false);
-            // ShowLighterDarker = Config.Bind("Custom", "Show Lighter / Darker", false);
-            HideTaskArrows = Config.Bind("Custom", "Hide Task Arrows", false);
-            EnableHorseMode = Config.Bind("Custom", "Enable Horse Mode", false);
-            ShowPopUpVersion = Config.Bind("Custom", "Show PopUp", "0");
-            // DebugRepo = Config.Bind("Custom", "Debug Hat Repo", "");
-
-            CustomRolesH.Load();
-            CustomOptionsH.Load();
-            Patches.FreeNamePatch.Initialize();
-            SubmergedCompatibility.Initialize();
             Harmony.PatchAll();
         }
     }
@@ -95,23 +64,17 @@ namespace UltimateMods
     // Debugging tools
     [HarmonyPatch(typeof(KeyboardJoystick), nameof(KeyboardJoystick.Update))]
     //DebugModeがONの時使用可
-    public static class KeyboardClass
+    public static class DebugManager
     {
-        public static bool triggerForceEnd;
         private static readonly System.Random random = new System.Random((int)DateTime.Now.Ticks);
         private static List<PlayerControl> bots = new List<PlayerControl>();
 
         // Source Code with TheOtherRoles
         public static void Postfix(KeyboardJoystick __instance)
         {
-            if (Input.GetKeyDown(KeyCode.LeftShift) && Input.GetKeyDown(KeyCode.F11))
-            {
-                triggerForceEnd = true;
-            }
+            // if (!UltimateModsPlugin.DebugMode.Value) return;
 
-            if (!UltimateModsPlugin.DebugMode.Value) return;
-
-            if (Input.GetKeyDown(KeyCode.F) && AmongUsClient.Instance.GameState == InnerNet.InnerNetClient.GameStates.Joined)
+            if (Input.GetKeyDown(KeyCode.F))
             {
                 var playerControl = UnityEngine.Object.Instantiate(AmongUsClient.Instance.PlayerPrefab);
                 var i = playerControl.PlayerId = (byte)GameData.Instance.GetAvailableId();
@@ -120,15 +83,32 @@ namespace UltimateMods
                 GameData.Instance.AddPlayer(playerControl);
                 AmongUsClient.Instance.Spawn(playerControl, -2, InnerNet.SpawnFlags.None);
 
+                int hat = random.Next(HatManager.Instance.allHats.Count);
+                int pet = random.Next(HatManager.Instance.allPets.Count);
+                int skin = random.Next(HatManager.Instance.allSkins.Count);
+                int visor = random.Next(HatManager.Instance.allVisors.Count);
                 int color = random.Next(Palette.PlayerColors.Length);
+                int nameplate = random.Next(HatManager.Instance.allNamePlates.Count);
 
                 playerControl.transform.position = PlayerControl.LocalPlayer.transform.position;
                 playerControl.GetComponent<DummyBehaviour>().enabled = true;
                 playerControl.NetTransform.enabled = false;
-                playerControl.SetName("Bot");
+                playerControl.SetName(RandomString(10));
                 playerControl.SetColor(color);
+                playerControl.SetHat(HatManager.Instance.allHats[hat].ProductId, color);
+                playerControl.SetPet(HatManager.Instance.allPets[pet].ProductId, color);
+                playerControl.SetVisor(HatManager.Instance.allVisors[visor].ProductId);
+                playerControl.SetSkin(HatManager.Instance.allSkins[skin].ProductId, color);
+                playerControl.SetNamePlate(HatManager.Instance.allNamePlates[nameplate].ProductId);
                 GameData.Instance.RpcSetTasks(playerControl.PlayerId, new byte[0]);
             }
+        }
+
+        public static string RandomString(int length)
+        {
+            const string chars = "ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789";
+            return new string(Enumerable.Repeat(chars, length)
+                .Select(s => s[random.Next(s.Length)]).ToArray());
         }
     }
 

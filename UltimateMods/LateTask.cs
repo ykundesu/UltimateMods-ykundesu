@@ -1,4 +1,4 @@
-// Source Code By SuperNewRoles
+// Source Code By Super New Roles
 
 using System;
 using HarmonyLib;
@@ -29,7 +29,7 @@ namespace UltimateMods
             this.timer = time;
             this.name = name;
             Tasks.Add(this);
-            // Logger.info("New LateTask \"" + name + "\" is created");
+            //Logger.info("New LateTask \"" + name + "\" is created");
         }
         public static void Update(float deltaTime)
         {
@@ -48,7 +48,7 @@ namespace UltimateMods
     [HarmonyPatch(typeof(HudManager), nameof(HudManager.Update))]
     class LateUpdate
     {
-        public static void Postfix()
+        public static void Postfix(HudManager __instance)
         {
             LateTask.Update(Time.deltaTime);
         }
